@@ -12,5 +12,8 @@ fn main() {
     // controller::mutable_state_instance().unwrap();
 
     // config
-    controller::config_instace().unwrap();
+    // controller::config_instace().unwrap();
+
+    // multi threading
+    controller::multi_thread_instance().unwrap();
 }

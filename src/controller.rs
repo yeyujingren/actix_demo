@@ -19,7 +19,7 @@ pub async fn instance() -> std::io::Result<()> {
             .route("/hey", web::get().to(manual_hello))
     })
     .bind("127.0.0.1:8080")?
-    .run()
+    .run()	// return a Server instance which must be awaited or spawned to start processing
     .await
 }
 
@@ -132,6 +132,24 @@ pub async fn config_instace() -> std::io::Result<()> {
     .bind(("127.0.0.1", 8080))?
     .run()
     .await
+}
+
+
+/// multi-threading
+/// HttpServer automatically starts a number of HTTP workers, by default this number is equal to the number of logical CPUs in the system. 
+/// This number can be overridden with the HttpServer::workers() method.
+#[actix_web::main]
+pub async fn multi_thread_instance() -> std::io::Result<()> {
+	HttpServer::new(|| {
+		App::new()
+			.route("/", web::get().to(
+				HttpResponse::Ok
+			))
+	})
+		.workers(10)
+		.bind("127.0.0.1:8080")?
+		.run()
+		.await
 }
 
 
