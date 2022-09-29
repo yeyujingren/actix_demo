@@ -62,6 +62,20 @@ pub async fn keep_alive_instance() -> std::io::Result<()> {
 }
 
 
+/// 
+/// Response body can be generated asynchronously. 
+/// In this case, body must implement the stream trait Stream<Item=Bytes, Error=Error>
+/// 
+#[actix_web::main]
+pub async fn stream_instance() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        App::new().service(home::stream)
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
+}
+
 
 
 
