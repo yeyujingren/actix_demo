@@ -1,165 +1,65 @@
-use std::sync::Mutex;
-
-use actix_web::{App, HttpServer, web, guard, HttpResponse};
-use home::{echo, manual_hello};
-use config::{
-	AppState,
-	AppstateWithCounter
-};
+use actix_web::{get, App, HttpRequest, HttpServer, Responder, http::KeepAlive};
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 
 mod home;
-mod config;
-/// default demo
-#[actix_web::main]
-pub async fn instance() -> std::io::Result<()> {
-    HttpServer::new(|| {
-        App::new()
-            .service(home::index)
-            .service(echo)
-            .route("/hey", web::get().to(manual_hello))
-    })
-    .bind("127.0.0.1:8080")?
-    .run()	// return a Server instance which must be awaited or spawned to start processing
-    .await
-}
 
-/// include namespace demo
-#[actix_web::main]
-pub async fn namespace_instance() -> std::io::Result<()> {
-	HttpServer::new(|| {
-		App::new().service(
-			web::scope("/app")
-				.route("/index", web::get().to(manual_hello))
-		)
-	})
-	.bind("127.0.0.1:8080")?
-	.run()
-	.await
-}
-
-
-/// state
-/// share with all routes and resources within the same scope.
-/// State is alse accessible for middleware
+///
+/// before
+/// To create the key.pem and cert.pem use the command. Fill in your own subject
+/// ```
+/// $ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -sha256
+/// ```
 /// 
-#[actix_web::main]
-pub async fn state_instance() -> std::io::Result<()> {
-	HttpServer::new(|| {
-		App::new()
-			.app_data(web::Data::new(AppState {
-				app_name: String::from("Actix web")
-			}))
-			.service(config::index)
-	})
-	.bind("127.0.0.1:8080")?
-	.run()
-	.await
-}
-
-/// mutable state
+/// To remove the password, then copy nopass.pem to key.pem
+/// ```
+/// $ openssl rsa -in key.pem -out nopass.pem
+/// ```
 /// 
-#[actix_web::main]
-pub async fn mutable_state_instance() -> std::io::Result<()> {
-	// must created outside HttpServer::new
-	let counter = web::Data::new(AppstateWithCounter {
-		counter: Mutex::new(0)
-	});
 
-	HttpServer::new(move || {
-		App::new()
-			.app_data(counter.clone())
-			.service(config::cur_counter)
-	})
-	.bind("127.0.0.1:8080")?
-	.run()
-	.await
+#[actix_web::main]
+pub async fn ssl_instance() -> std::io::Result<()> {
+    // load TLS keys
+    // to create a self-signed temporary cert for testing:
+    // `openssl req -x509 -newkey rsa:4096 -nodes -keyout key.pem -out cert.pem -days 365 -subj '/CN=localhost'`
+    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+    builder
+        .set_private_key_file("key.pem", SslFiletype::PEM)
+        .unwrap();
+    builder.set_certificate_chain_file("cert.pem").unwrap();
+
+    HttpServer::new(|| App::new().service(home::index))
+        .bind_openssl("127.0.0.1:8080", builder)?
+        .run()
+        .await
 }
 
-// 
-// The web::scope() method allows setting a resource group prefix. 
-// This scope represents a resource prefix that will be prepended to all resource patterns added by the resource configuration. 
-// 我愿意单方面成至为 “适配器”
-// 
-// #[actix_web::main]
-// pub async fn adapter_instance() -> std::io::Result<()> {
-// 	let scope = web::scope("/adapter").service(config::cur_counter);
-// 	App::new().service(scope);
-// }
-
-
-/// a guard as a simple function that accepts a request object reference and returns true or false.
+///
+/// Keep-Alive
+/// `Duration::from_secs(75)`or `KeepAlive::Timeout(75)`: enables 75 second keep-alive timer.
+/// `KeepAlive::Os`: uses OS keep-alive.
+/// `None` or `KeepAlive::Disabled`: disables keep-alive.
 /// 
-/// this demo is one of the guards: Header
+use std::time::Duration;
+
 #[actix_web::main]
-pub async fn guard_instance() -> std::io::Result<()> {
-	HttpServer::new(|| {
-		App::new()
-			.service(
-				web::scope("/guard")
-					.guard(guard::Header("Host", "www.rust-lang.org"))
-					.route("", web::to(|| async {
-						HttpResponse::Ok().body("www")
-					}))
-			)
-			.service(
-				web::scope("/guard")
-				.guard(guard::Header("Host", "users.rust-lang.org"))
-				.route("", web::to(|| async {
-					HttpResponse::Ok().body("user")
-				}))
-			)
-			.route("/guard", web::to(HttpResponse::Ok))
-	})
-	.bind("127.0.0.1:8080")?
-	.run()
-	.await
+pub async fn keep_alive_instance() -> std::io::Result<()> {
+    // Set keep-alive to 75s
+    let _one = HttpServer::new(|| {
+        App::new().service(home::index)
+    }).keep_alive(Duration::from_secs(75));
+
+    // use OS's keep-alive (usually quite long)
+    let _two = HttpServer::new(|| {
+        App::new().service(home::index)
+    }).keep_alive(KeepAlive::Os);
+
+    // Disabled keep-alive
+    let _there = HttpServer::new(|| {
+        App::new().service(home::index)
+    }).keep_alive(None);
+    // HttpServer::shutdown_timeout(self, Duration::from_secs(30));
+    Ok(())
 }
-
-/// For simplicity and reusability both App and web::Scope provide the configure method. 
-/// This function is useful for moving parts of the configuration to a different module or even library. 
-/// For example, some of the resource’s configuration could be moved to a different module.
-#[actix_web::main]
-pub async fn config_instace() -> std::io::Result<()> {
-    HttpServer::new(|| {
-        App::new()
-            .configure(config::config)
-            .service(web::scope("/api").configure(config::scoped_config))
-            .route(
-                "/",
-                web::get().to(|| async { HttpResponse::Ok().body("/") }),
-            )
-    })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await
-}
-
-
-/// multi-threading
-/// HttpServer automatically starts a number of HTTP workers, by default this number is equal to the number of logical CPUs in the system. 
-/// This number can be overridden with the HttpServer::workers() method.
-#[actix_web::main]
-pub async fn multi_thread_instance() -> std::io::Result<()> {
-	HttpServer::new(|| {
-		App::new()
-			.route("/", web::get().to(
-				HttpResponse::Ok
-			))
-	})
-		.workers(10)
-		.bind("127.0.0.1:8080")?
-		.run()
-		.await
-}
-
-
-
-
-
-
-
-
-
 
 
 
