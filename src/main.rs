@@ -1,6 +1,6 @@
-mod controller;
+mod middleware;
 
 
 fn main() {
-  controller::path_redirect_instance().unwrap();
+
 }

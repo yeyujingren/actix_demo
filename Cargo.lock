@@ -578,6 +578,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "futures",
+ "futures-util",
  "openssl",
  "serde",
  "serde_json",
